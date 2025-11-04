@@ -61,6 +61,12 @@ class Request:
         self.events: list[EngineCoreEvent] = []
         self.stop_reason: Union[int, str, None] = None
 
+        # Queue drafting
+        self.first_waiting_time = None
+        self.queue_drafting_start_time = None
+        self.queue_drafting_stop_time = None
+        self.first_running_time = None
+        
         # P/D: Connector-specific KV transfer parameters.
         self.kv_transfer_params: Optional[dict[str, Any]] = None
 

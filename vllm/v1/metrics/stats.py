@@ -32,6 +32,7 @@ class SchedulerStats:
 
     num_running_reqs: int = 0
     num_waiting_reqs: int = 0
+    num_queue_drafting_reqs: int = 0
 
     # These are used for internal DP load-balancing.
     step_counter: int = 0
@@ -59,6 +60,7 @@ class RequestStateStats:
     """Stats that need to be tracked across delta updates."""
 
     num_generation_tokens: int = 0
+    num_cpu_drafted_tokens: int = 0
 
     # This is an engine frontend timestamp (wall-clock)
     arrival_time: float = 0.0
@@ -156,6 +158,10 @@ class IterationStats:
             elif event.type == EngineCoreEventType.PREEMPTED:
                 self.num_preempted_reqs += 1
                 LoRARequestStates.preempted_request(lora_stats, req_id)
+            elif event.type == EngineCoreEventType.QUEUE_DRAFTING_START:
+                pass
+            elif event.type == EngineCoreEventType.QUEUE_DRAFTING_STOP:
+                pass
 
     def update_from_finished_request(self, finish_reason: "FinishReason",
                                      num_prompt_tokens: int,

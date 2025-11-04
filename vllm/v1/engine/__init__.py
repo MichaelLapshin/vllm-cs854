@@ -76,6 +76,8 @@ class EngineCoreEventType(enum.IntEnum):
     QUEUED = 1
     SCHEDULED = 2
     PREEMPTED = 3
+    QUEUE_DRAFTING_START = 4
+    QUEUE_DRAFTING_STOP = 5
 
 
 class EngineCoreEvent(msgspec.Struct):

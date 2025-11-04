@@ -58,6 +58,11 @@ class RequestQueue(ABC):
         pass
 
     @abstractmethod
+    def index(self, request: Request) -> int:
+        """Get index of request in queue."""
+        pass
+
+    @abstractmethod
     def __bool__(self) -> bool:
         """Check if queue has any requests."""
         pass
@@ -118,6 +123,15 @@ class FCFSRequestQueue(deque[Request], RequestQueue):
         # and extend
         self.clear()
         self.extend(filtered_requests)
+
+    def index(self, request: Request) -> int:
+        """Get index of request in queue."""
+        index = 0
+        for r in self:
+            if r == request:
+                return index
+            index += 1
+        raise ValueError(f"request {request.request_id} is not in queue")
 
     def __bool__(self) -> bool:
         """Check if queue has any requests."""
@@ -193,6 +207,15 @@ class PriorityRequestQueue(RequestQueue):
         self._heap = [(p, t, r) for p, t, r in self._heap
                       if r not in requests_to_remove]
         heapq.heapify(self._heap)
+
+    def index(self, request: Request) -> int:
+        """Get index of request in queue."""
+        index = 0
+        for r in self:
+            if r == request:
+                return index
+            index += 1
+        raise ValueError(f"request {request.request_id} is not in queue")
 
     def __bool__(self) -> bool:
         """Check if queue has any requests."""
