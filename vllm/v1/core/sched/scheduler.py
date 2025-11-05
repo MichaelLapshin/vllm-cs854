@@ -545,7 +545,7 @@ class Scheduler(SchedulerInterface):
                         self.encoder_cache_manager.allocate(request, i)
                     encoder_compute_budget = new_encoder_compute_budget
 
-                # Remove request from CPU drafting if computed to not have enough time
+                # Remove running request from queue drafter
                 if self.queue_drafter.maybe_remove_request(request):
                     # Collect queue drafting tokens
                     # TODO: add the logic here
@@ -1125,7 +1125,6 @@ class Scheduler(SchedulerInterface):
         self.requests[request.request_id] = request
         if self.log_stats:
             request.record_event(EngineCoreEventType.QUEUED)
-
 
     def finish_requests(
         self,
