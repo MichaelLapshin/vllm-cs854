@@ -28,6 +28,7 @@ from vllm.v1.core.sched.output import (CachedRequestData, NewRequestData,
 from vllm.v1.core.sched.request_queue import (SchedulingPolicy,
                                               create_request_queue)
 from vllm.v1.core.sched.utils import check_stop, remove_all
+from vllm.v1.core.sched.queue_drafter import QueueDrafter
 from vllm.v1.engine import (EngineCoreEventType, EngineCoreOutput,
                             EngineCoreOutputs)
 from vllm.v1.kv_cache_interface import KVCacheConfig
@@ -124,6 +125,9 @@ class Scheduler(SchedulerInterface):
         # Priority queues for requests.
         self.waiting = create_request_queue(self.policy)
         self.running: list[Request] = []
+
+        # Queue drafting
+        self.queue_drafter = QueueDrafter(self.waiting, requests_limit=2)
 
         # The request IDs that are finished in between the previous and the
         # current steps. This is used to notify the workers about the finished
@@ -505,6 +509,11 @@ class Scheduler(SchedulerInterface):
 
                 req_index += 1
                 self.running.append(request)
+
+                if request.first_running_time is None:
+                    request.first_running_time = time.time()
+                    print(f"[R {request.request_id}] First running time: {request.first_running_time}") 
+
                 if self.log_stats:
                     request.record_event(EngineCoreEventType.SCHEDULED,
                                          scheduled_timestamp)
@@ -535,6 +544,19 @@ class Scheduler(SchedulerInterface):
                     for i in encoder_inputs_to_schedule:
                         self.encoder_cache_manager.allocate(request, i)
                     encoder_compute_budget = new_encoder_compute_budget
+
+                # Remove running request from queue drafter
+                if self.queue_drafter.maybe_remove_request(request):
+                    # Collect queue drafting tokens
+                    # TODO: add the logic here
+                    num_draft_tokens = 0 # TODO: count number of draft tokens computed
+
+                    # TODO: remove the following (it's just for testing purposes)
+                    MS_PER_DRAFT_TOKEN = 10000 + len(self.queue_drafter) * 1000
+                    num_draft_tokens = int((request.queue_drafting_stop_time - request.queue_drafting_start_time)*1000 / MS_PER_DRAFT_TOKEN)
+                    print(f"[R {request.request_id}] Number of drafts generated: {num_draft_tokens} (in {int((request.queue_drafting_stop_time - request.queue_drafting_start_time) * 1000)}ms) ") 
+
+                    self.queue_drafter.adjust_draft_distance(num_draft_tokens)
 
         # Put back any skipped requests at the head of the waiting queue
         if skipped_waiting_requests:
@@ -1096,6 +1118,10 @@ class Scheduler(SchedulerInterface):
 
     def add_request(self, request: Request) -> None:
         self.waiting.add_request(request)
+        request.first_waiting_time = time.time()
+
+        self.queue_drafter.maybe_add_request(request)
+
         self.requests[request.request_id] = request
         if self.log_stats:
             request.record_event(EngineCoreEventType.QUEUED)
@@ -1118,6 +1144,7 @@ class Scheduler(SchedulerInterface):
 
         running_requests_to_remove = set()
         waiting_requests_to_remove = []
+        queue_drafting_requests_to_remove = set()
         valid_requests = []
 
         # First pass: collect requests to remove from queues
@@ -1132,12 +1159,17 @@ class Scheduler(SchedulerInterface):
                 running_requests_to_remove.add(request)
             else:
                 waiting_requests_to_remove.append(request)
+            
+                if request in self.queue_drafter:
+                    queue_drafting_requests_to_remove.add(request)
 
         # Remove all requests from queues at once for better efficiency
         if running_requests_to_remove:
             self.running = remove_all(self.running, running_requests_to_remove)
         if waiting_requests_to_remove:
             self.waiting.remove_requests(waiting_requests_to_remove)
+        if queue_drafting_requests_to_remove:
+            self.queue_drafter.remove_requests(queue_drafting_requests_to_remove)
 
         # Second pass: set status and free requests
         for request in valid_requests:
@@ -1184,6 +1216,7 @@ class Scheduler(SchedulerInterface):
         assert prefix_cache_stats is not None
         return SchedulerStats(num_running_reqs=len(self.running),
                               num_waiting_reqs=len(self.waiting),
+                              num_queue_drafting_reqs=len(self.queue_drafter),
                               kv_cache_usage=self.kv_cache_manager.usage,
                               prefix_cache_stats=prefix_cache_stats,
                               spec_decoding_stats=spec_decoding_stats,
